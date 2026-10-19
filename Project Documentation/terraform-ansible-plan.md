@@ -1,4 +1,4 @@
-# Terraform / Ansible Plan — Lab 48
+# Terraform / Ansible Plan   
 
 ## Terraform
 - **Scope (non-production):** Define infrastructure resources required to support the Northstar CRM capstone and its k3s environment, if infrastructure provisioning is needed.
