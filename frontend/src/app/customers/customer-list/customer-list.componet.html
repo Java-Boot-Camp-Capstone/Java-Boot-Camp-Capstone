@@ -1,0 +1,66 @@
+<main class="page">
+  <div class="page-heading">
+    <div>
+      <h1>Customers</h1>
+      <p>Manage customers in Northstar CRM.</p>
+    </div>
+
+    <button type="button" (click)="loadCustomers()">
+      Refresh
+    </button>
+  </div>
+
+  <p *ngIf="loading" class="message">
+    Loading customers...
+  </p>
+
+  <p *ngIf="errorMessage" class="error">
+    {{ errorMessage }}
+  </p>
+
+  <div
+    class="table-container"
+    *ngIf="!loading && !errorMessage"
+  >
+    <table>
+      <thead>
+        <tr>
+          <th>Customer ID</th>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Status</th>
+          <th>Details</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        <tr *ngFor="let customer of customers">
+          <td>{{ customer.customerId }}</td>
+          <td>
+            {{ customer.firstName }} {{ customer.lastName }}
+          </td>
+          <td>{{ customer.email }}</td>
+          <td>
+            <span class="status">
+              {{ customer.status }}
+            </span>
+          </td>
+          <td>
+            <a
+              [routerLink]="[
+                '/customers',
+                customer.customerId
+              ]"
+            >
+              View
+            </a>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p *ngIf="customers.length === 0" class="message">
+      No customers were returned by the API.
+    </p>
+  </div>
+</main>

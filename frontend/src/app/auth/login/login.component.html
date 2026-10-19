@@ -1,0 +1,36 @@
+<main class="login-page">
+  <section class="login-card">
+    <h1>Northstar CRM</h1>
+    <p class="subtitle">Sign in to your account</p>
+
+    <form (ngSubmit)="login()">
+      <label for="username">Username</label>
+      <input
+        id="username"
+        name="username"
+        type="text"
+        [(ngModel)]="username"
+        autocomplete="username"
+        required
+      />
+
+      <label for="password">Password</label>
+      <input
+        id="password"
+        name="password"
+        type="password"
+        [(ngModel)]="password"
+        autocomplete="current-password"
+        required
+      />
+
+      <p *ngIf="errorMessage" class="error">
+        {{ errorMessage }}
+      </p>
+
+      <button type="submit" [disabled]="loading">
+        {{ loading ? 'Signing in...' : 'Log In' }}
+      </button>
+    </form>
+  </section>
+</main>

@@ -1,0 +1,57 @@
+<main class="page">
+  <a class="back-link" routerLink="/interactions">
+    &larr; Back to interactions
+  </a>
+
+  <section class="form-card">
+    <h1>Add Interaction</h1>
+    <p>Record a call, email, meeting, or other customer activity.</p>
+
+    <form (ngSubmit)="submit()">
+      <label for="customerId">Customer ID</label>
+      <input
+        id="customerId"
+        name="customerId"
+        [(ngModel)]="customerId"
+        required
+      />
+
+      <label for="type">Interaction type</label>
+      <select
+        id="type"
+        name="type"
+        [(ngModel)]="type"
+        required
+      >
+        <option value="CALL">Call</option>
+        <option value="EMAIL">Email</option>
+        <option value="MEETING">Meeting</option>
+        <option value="OTHER">Other</option>
+      </select>
+
+      <label for="notes">Notes</label>
+      <textarea
+        id="notes"
+        name="notes"
+        [(ngModel)]="notes"
+        rows="6"
+        placeholder="Enter details about the interaction..."
+        required
+      ></textarea>
+
+      <p *ngIf="errorMessage" class="error">
+        {{ errorMessage }}
+      </p>
+
+      <div class="form-actions">
+        <a routerLink="/interactions" class="cancel-button">
+          Cancel
+        </a>
+
+        <button type="submit" [disabled]="saving">
+          {{ saving ? 'Saving...' : 'Save Interaction' }}
+        </button>
+      </div>
+    </form>
+  </section>
+</main>

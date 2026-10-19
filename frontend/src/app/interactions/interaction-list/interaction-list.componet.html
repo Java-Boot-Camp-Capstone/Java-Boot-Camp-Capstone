@@ -1,0 +1,50 @@
+<main class="page">
+  <a class="back-link" routerLink="/customers">
+    &larr; Back to customers
+  </a>
+
+  <h1>Customer Details</h1>
+
+  <p *ngIf="loading">Loading customer...</p>
+
+  <p *ngIf="errorMessage" class="error">
+    {{ errorMessage }}
+  </p>
+
+  <section *ngIf="customer as c" class="details-card">
+    <h2>{{ c.firstName }} {{ c.lastName }}</h2>
+
+    <div class="detail-row">
+      <strong>Customer ID</strong>
+      <span>{{ c.customerId }}</span>
+    </div>
+
+    <div class="detail-row">
+      <strong>First name</strong>
+      <span>{{ c.firstName }}</span>
+    </div>
+
+    <div class="detail-row">
+      <strong>Last name</strong>
+      <span>{{ c.lastName }}</span>
+    </div>
+
+    <div class="detail-row">
+      <strong>Email</strong>
+      <span>{{ c.email }}</span>
+    </div>
+
+    <div class="detail-row">
+      <strong>Status</strong>
+      <span>{{ c.status }}</span>
+    </div>
+
+    <a
+      class="interactions-link"
+      [routerLink]="['/interactions']"
+      [queryParams]="{ customerId: c.customerId }"
+    >
+      View interactions
+    </a>
+  </section>
+</main>
