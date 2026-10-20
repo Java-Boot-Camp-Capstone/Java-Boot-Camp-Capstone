@@ -7,7 +7,6 @@ import java.util.UUID;
 
 /**
  * Versioned event contract stub.
- * TODO: freeze field names with Lab 48 ADR; add schema version constant.
  */
 public record CustomerInteractionRecordedV1(
         String eventType,

@@ -28,8 +28,6 @@ public class InteractionController {
     public ResponseEntity<InteractionResponse> create(
             @Valid @RequestBody CreateInteractionRequest request,
             @RequestHeader(value = "X-Correlation-ID", required = false) String correlationHeader) {
-        // TODO: prefer header correlation when present; default lab-request-001 for session demos
-        String correlationId = resolveCorrelationId(correlationHeader, request.correlationId());
         InteractionResponse body = interactionService.create(request, correlationHeader);
         return ResponseEntity.status(HttpStatus.CREATED).body(body);
     }

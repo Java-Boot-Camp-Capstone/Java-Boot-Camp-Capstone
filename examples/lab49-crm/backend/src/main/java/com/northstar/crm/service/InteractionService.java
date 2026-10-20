@@ -10,8 +10,6 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 
-import static com.northstar.crm.api.InteractionController.resolveCorrelationId;
-
 @Service
 public class InteractionService {
 
@@ -32,15 +30,13 @@ public class InteractionService {
     @Transactional
     public InteractionResponse create(CreateInteractionRequest request, String correlationHeader) {
 
-        // TODO 1: resolve correlationId (header > request > "lab-request-001")
+
         String correlationId = resolveCorrelationId(correlationHeader, request.correlationId());
 
-        // TODO 2: reject unknown customer (CUS-9999 / missing) — throw domain exception
         if (!interactionRepository.customerExists(request.customerId())) {
             throw new UnknownCustomerException(request.customerId());
         }
 
-        // TODO 3: map request → Interaction, set createdAt = Instant.now()
         Interaction interaction = new Interaction();
         interaction.setCustomerId(request.customerId());
         interaction.setInteractionType(request.interactionType());
@@ -48,13 +44,10 @@ public class InteractionService {
         interaction.setCorrelationId(correlationId);
         interaction.setCreatedAt(Instant.now());
 
-        // TODO 4: save via repository
         Interaction saved = interactionRepository.save(interaction);
 
-        // TODO 5: publish event
         eventPublisher.publish(saved);
 
-        // TODO 6: return InteractionResponse
         return toResponse(saved);
     }
 

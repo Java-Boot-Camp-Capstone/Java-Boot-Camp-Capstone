@@ -6,8 +6,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
-import java.time.Instant;
-
 @Component
 public class InteractionEventPublisher {
 
@@ -31,7 +29,6 @@ public class InteractionEventPublisher {
     }
 
     public void publish(Interaction interaction) {
-        // TODO: build CustomerInteractionRecordedV1 and publish to Kafka
         CustomerInteractionRecordedV1 event = new CustomerInteractionRecordedV1(
                 CustomerInteractionRecordedV1.TYPE,
                 CustomerInteractionRecordedV1.VERSION,
