@@ -1,0 +1,54 @@
+
+<main class="page">
+  <a class="back-link" routerLink="/customers">
+    &larr; Back to customers
+  </a>
+
+  <div class="page-header">
+    <h1>Customer Interactions</h1>
+
+    <a class="create-link" routerLink="/interactions/new">
+      + Create Interaction
+    </a>
+  </div>
+
+  <p *ngIf="loading">Loading interactions...</p>
+
+  <p *ngIf="errorMessage" class="error">
+    {{ errorMessage }}
+  </p>
+
+  <p
+    *ngIf="!loading && !errorMessage && interactions.length === 0"
+    class="empty-message"
+  >
+    No interactions found. Create an interaction to get started.
+  </p>
+
+  <section
+    *ngIf="!loading && !errorMessage && interactions.length > 0"
+    class="details-card"
+  >
+    <table>
+      <thead>
+        <tr>
+          <th>Customer ID</th>
+          <th>Interaction Type</th>
+          <th>Summary</th>
+          <th>Correlation ID</th>
+          <th>Created At</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        <tr *ngFor="let interaction of interactions">
+          <td>{{ interaction.customerId }}</td>
+          <td>{{ interaction.interactionType }}</td>
+          <td>{{ interaction.summary }}</td>
+          <td>{{ interaction.correlationId }}</td>
+          <td>{{ interaction.createdAt | date:'short' }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+</main>

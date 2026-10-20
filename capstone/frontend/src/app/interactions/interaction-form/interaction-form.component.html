@@ -1,0 +1,65 @@
+
+<main class="page">
+  <a routerLink="/interactions">&larr; Back to interactions</a>
+
+  <h1>Create Interaction</h1>
+
+  <form (ngSubmit)="submitForm()">
+    <div class="form-field">
+      <label for="customerId">Customer ID</label>
+      <select
+        id="customerId"
+        name="customerId"
+        [(ngModel)]="customerId"
+        required
+      >
+        <option value="CUS-1001">CUS-1001 - Amina Khan</option>
+        <option value="CUS-1002">CUS-1002 - Ravi Singh</option>
+      </select>
+    </div>
+
+    <div class="form-field">
+      <label for="interactionType">Interaction Type</label>
+      <select
+        id="interactionType"
+        name="interactionType"
+        [(ngModel)]="interactionType"
+        required
+      >
+        <option value="CALL">Call</option>
+        <option value="EMAIL">Email</option>
+        <option value="MEETING">Meeting</option>
+        <option value="NOTE">Note</option>
+      </select>
+    </div>
+
+    <div class="form-field">
+      <label for="summary">Summary</label>
+      <textarea
+        id="summary"
+        name="summary"
+        [(ngModel)]="summary"
+        required
+        rows="4"
+        placeholder="Enter a summary of the interaction"
+      ></textarea>
+    </div>
+
+    <div class="form-field">
+      <label for="correlationId">Correlation ID</label>
+      <input
+        id="correlationId"
+        name="correlationId"
+        [(ngModel)]="correlationId"
+        placeholder="lab-request-001"
+      />
+    </div>
+
+    <p *ngIf="errorMessage" class="error">{{ errorMessage }}</p>
+    <p *ngIf="successMessage" class="success">{{ successMessage }}</p>
+
+    <button type="submit" [disabled]="saving">
+      {{ saving ? 'Saving...' : 'Create Interaction' }}
+    </button>
+  </form>
+</main>

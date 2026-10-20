@@ -1,0 +1,27 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/crm
+    username: crm
+    password: crm-local-dev
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+
+  flyway:
+    enabled: true
+
+  kafka:
+    bootstrap-servers: localhost:8080
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        "[spring.json.add.type.headers]": false
+
+app:
+  kafka:
+    topics:
+      interaction-recorded: customer.interaction.recorded
