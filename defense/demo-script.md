@@ -60,7 +60,7 @@ Use the interaction type and fields supported by the actual application.
 
 **Pass signal:** The UI reports success and the new interaction appears in the history, if the UI refreshes automatically.
 
-## 6. Verify persistence in PostgreSQL — 4:15–5:30
+## 5. Verify persistence in PostgreSQL — 4:15–5:30
 
 **Team Member 1 does:**
 1. Use the prepared SQL query or approved database inspection method.
@@ -75,7 +75,7 @@ Use the interaction type and fields supported by the actual application.
 
 **Important:** Prepare and test the SQL query before the presentation. Use the actual table and column names from the project; don't guess them during the demo.
 
-## 7. Explain the event flow — 5:30–6:30
+## 6. Explain the event flow — 5:30–6:30
 
 **Team Member 2 does:**
 1. Show the relevant application log or Kafka consumer output, if available.
@@ -89,7 +89,7 @@ Use the interaction type and fields supported by the actual application.
 **Pass signal:** Verified output shows the expected event and, where implemented, its correlation ID.
 
 
-## 8. Show delivery evidence — 6:30–7:45
+## 7. Show delivery evidence — 6:30–7:45
 
 **Team Member 3 does:**
 - Show the relevant successful CI pipeline run.
@@ -101,7 +101,7 @@ Use the interaction type and fields supported by the actual application.
 
 **Pass signal:** The evidence is accessible and corresponds to the intended project version.
 
-## 9. Demonstrate an authentication failure — 7:45–9:00
+## 8. Demonstrate an authentication failure — 7:45–9:00
 
 **Team Member 4 does:**
 1. Call a protected API endpoint without an authentication token.
@@ -118,7 +118,7 @@ Use the interaction type and fields supported by the actual application.
 
 These are different cases. Don't substitute one for the other or claim a response your application doesn't return.
 
-## 11. Close — 9:00–10:00
+## 9. Close — 9:00–10:00
 
 **Team Member 1 says:**
 
