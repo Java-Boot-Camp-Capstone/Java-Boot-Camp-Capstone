@@ -1,98 +1,68 @@
-# Docker & GitHub Actions Runbook
+# Docker & GitHub Actions - how it works
 
-Owner: Brandon (DevOps / CI-CD) · Supports Lab 51 (Release) and the defense "release story".
-Related: [security-baseline.md](security-baseline.md) · [k3s-deployment.md](k3s-deployment.md)
+Owner: Brandon (Docker / CI-CD). To just **run** the app, see the [README](../../README.md).
 
-## Repository layout (merge requirement)
+Delivery path (from [architecture.md](architecture.md)):
+**GitHub → GitHub Actions → tests and security checks → Docker image → k3s deployment**
 
-All branches must use **root-level** `backend/` and `frontend/` (brief §5). Ben's draft lived under
-`capstone/lab49-crm/backend` and `capstone/frontend`; it was moved here as-is (plus the fixes listed below).
-CI's `detect` job looks for `backend/pom.xml` and `frontend/package.json` - other layouts are silently skipped.
+## Docker
 
-## Files
-
-| File | Purpose |
+| File | What it does |
 |---|---|
-| `backend/Dockerfile` | Multi-stage Maven/JDK 21 → JRE 21 Alpine, `apk upgrade`, non-root UID 10001, HEALTHCHECK on readiness |
-| `frontend/Dockerfile` | Multi-stage Node 22 `ng build` → nginx-unprivileged 1.30 (UID 101, port 8080) |
-| `frontend/nginx.conf.template` | SPA fallback, `/api/` proxy to `${BACKEND_URL}` (forwards real host/proto), `/healthz`, CSP + security headers |
-| `frontend/proxy.conf.json` | `ng serve` proxies `/api` → `localhost:8080` (same relative URLs as Docker/k3s) |
-| `docker-compose.yml` | Local full stack: PostgreSQL 16, Kafka 3.8 (KRaft), backend, frontend - refuses to start without secrets |
-| `.env.example` | Synthetic local values; copy to `.env` (git-ignored) |
-| `.trivyignore.yaml` | Time-boxed, owned scan exceptions (expire → gate blocks again) |
-| `.github/workflows/ci.yml` | CI/CD pipeline (below) |
-| `.github/workflows/demo.yml` | One-click demo from the Actions tab (optional public URL) |
-| `k8s/base/` | k3s manifests (Kustomize) |
-| `scripts/smoke-test.sh` | 14-check smoke test (happy path + 401/400 negatives) - local, CI, k3s, demo |
-| `scripts/k3s-deploy.sh` | Digest-pinned deploy + smoke + auto-rollback |
+| `backend/Dockerfile` | Stage 1 compiles the jar with Maven (JDK 21). Stage 2 runs it on a small Java 21 image as a non-root user. |
+| `frontend/Dockerfile` | Stage 1 builds Angular (Node 22). Stage 2 serves it with nginx as a non-root user. |
+| `frontend/nginx.conf.template` | Serves the Angular app, forwards `/api/*` to the backend, adds security headers, `/healthz` for health checks. |
+| `docker-compose.yml` | Runs the whole architecture locally: PostgreSQL, Kafka, backend, frontend. Waits for each to be healthy. |
+| `.env.example` → `.env` | Local demo passwords. `.env` is git-ignored; the start scripts create it automatically. |
 
-## Run locally
+Passwords and the JWT signing key are **never** in the code or images: Compose reads them from `.env`,
+GitHub Actions from repository/environment secrets, k3s from a Kubernetes Secret.
 
-```bash
-cp .env.example .env            # synthetic values; never commit .env
-docker compose up --build -d --wait
-AGENT_PASSWORD=agent-local-dev ./scripts/smoke-test.sh
+## CI workflow (`.github/workflows/ci.yml`) - target under 2 minutes
+
+```
+            ┌─ backend job:  mvn verify ─> image from that jar  ─> Trivy scan ─> push (main) ─┐
+ push / PR ─┤                                                                                  ├─> release: tag + record digests (main)
+            └─ frontend job: ng test + ng build ─> image from that build ─> Trivy scan ─> push ┘
 ```
 
-| URL | What |
+| Why it is fast | How |
 |---|---|
-| http://localhost:4200 | Angular UI - log in as `agent` / `agent-local-dev` |
-| http://localhost:4200/api/... | API through nginx (same origin) |
-| http://localhost:8080/actuator/health | Backend health (only health is exposed) |
+| Backend and frontend run **in parallel** | two independent jobs |
+| Code is built **once** | CI uses the jar/dist it just tested as the image contents (`build-contexts`) instead of compiling again inside Docker |
+| Dependencies are cached | Maven cache, `node_modules` cache, Docker layer cache |
+| Scanner database cached | Trivy's database (~3 GB) is downloaded once a week, then reused - scans take seconds |
+| Slow scan kept separate | CodeQL runs in its own workflow (`codeql.yml`), not in the timed CI run |
 
-Stop: `docker compose down` (add `-v` to wipe the database volume).
+**Security checks that block CI:** Trivy image scan fails on any CRITICAL vulnerability, and on HIGH ones in the
+backend's Java libraries. Pull requests also run GitHub dependency review (blocks new HIGH-risk dependencies).
+Accepted findings live in `.trivyignore.yaml`, each with an owner and an expiry date.
 
-**IntelliJ (backend without Docker):** Run config → Environment variables:
-`SPRING_DATASOURCE_PASSWORD=crm-local-dev;APP_JWT_SECRET=local-dev-only-change-me-0123456789abcdef;APP_DEMO_AGENT_PASSWORD=agent-local-dev;APP_DEMO_MANAGER_PASSWORD=manager-local-dev`
-(start Postgres/Kafka with `docker compose up -d postgres kafka`). **Frontend:** `cd frontend && npm start` (proxy handles `/api`).
+**Images:** `ghcr.io/java-boot-camp-capstone/northstar-crm-backend` and `…-frontend`, tagged `sha-<commit>`;
+after both jobs pass, the `release` job adds the branch tag (same digest) and writes a release manifest
+(commit, run URL, both digests) to the run summary.
 
-## Pipeline (`ci.yml`)
+**GITHUB_TOKEN:** the organisation locks the repo's "Workflow permissions" setting (greyed out), so the workflow
+declares permissions itself: read-only by default, `packages: write` only on jobs that push images,
+`security-events: write` only for CodeQL.
 
-| Job | Runs on | Gate |
-|---|---|---|
-| Detect components | every run | Skips jobs cleanly if `backend/` or `frontend/` is missing |
-| Secret scan | every run | gitleaks over full Git history - **blocks** |
-| Backend - Maven verify | push / PR | `mvn -B verify` incl. `AuthorizationTests` (401/403/200) - **blocks** |
-| Frontend - Angular test + build | push / PR | `npm ci`, `ng test` (headless), `ng build --configuration production` - **blocks** |
-| Dependency scan | push / PR | Trivy on `package-lock.json`, HIGH+ - **blocks** |
-| Dependency review | PR only | New HIGH+ vulnerable deps in the PR diff - **blocks** |
-| CodeQL SAST | push / PR | Java + TypeScript → Security tab |
-| Images | after all gates | Build once → Trivy image scan (CRITICAL / Java libs HIGH - **blocks**) → compose e2e smoke → ZAP DAST (report) → push to GHCR (main/Development or manual) → release manifest with digests |
-| Deploy to k3s | manual (or auto on Development) | GitHub Environment approval → digest deploy → smoke → auto-rollback |
+**Run it by hand (presentation day):** Actions → **CI** → *Run workflow* → pick the branch. Tick *publish* to push images.
 
-All actions are pinned to commit SHAs (Node 24 runtimes) and every job has least-privilege `permissions:`.
+## Deploy workflow (`.github/workflows/deploy.yml`)
+Actions → **Deploy to k3s** → *Run workflow* → environment + image tag (`main` = latest tested main build).
+It looks up the image digests, deploys them to k3s, waits for the pods, runs `scripts/smoke-test.sh`,
+and rolls back automatically if anything fails. Setup (kubeconfig, secrets): [k3s-deployment.md](k3s-deployment.md).
 
-### GITHUB_TOKEN permissions (why the settings page is greyed out)
-The org controls the default token permission, so the repo setting is locked. That's fine - the workflow
-declares what it needs per job: `contents: read` globally, `packages: write` only on `images` (GHCR push),
-`security-events: write` only on `codeql`, `pull-requests: write` only on dependency review. The first GHCR push
-requires the org to allow package creation (Org → Settings → Packages); ask the org owner if push fails with `denied`.
+## Evidence for the presentation
+- CI run page: green jobs, run time, release manifest (image digests) in the summary
+- Artifacts: `backend-test-reports`, `release-manifest`
+- Deploy run summary: smoke-test table, previous vs new image, rollback command
+- Security tab → Code scanning (CodeQL)
 
-## Run from the Actions tab (presentation-day backup)
-
-| Goal | How |
+## Known gaps (owned by other sections)
+| Item | Owner |
 |---|---|
-| Re-run the full pipeline on any branch | Actions → **CI** → *Run workflow* → pick branch (tick *publish* to push images) |
-| Run the whole app without a laptop | Actions → **Demo - run full CRM stack** → *Run workflow* |
-| …and share it in a browser | same, tick **public_url** + pick minutes → open the URL shown in the run summary / annotation |
-
-Public URL mode needs repo secrets `DEMO_AGENT_PASSWORD` and `DEMO_MANAGER_PASSWORD` (Settings → Secrets and variables
-→ Actions). Synthetic data only; JWT still enforced; tunnel closes when the job ends or is cancelled.
-
-## Evidence for the defense
-
-- Actions run URL (green run + one deliberately failed run that was fixed through code)
-- Run summary: smoke-test table + release manifest (git SHA, image digests, run URL)
-- Artifact `release-evidence` (Trivy reports, ZAP report, release-manifest.json), `backend-test-reports`, `frontend-coverage`, `security-*`
-- Security tab → Code scanning alerts (triaged)
-- k3s deploy summary (previous vs new digest, rollback command)
-
-## Known gaps / residual risks / In Progress
-
-| Item | Owner | Note |
-|---|---|---|
-| Kafka events never sent - `InteractionEventPublisher` picks its no-arg constructor | Backend team | Bootstrap address is fixed; add `@Autowired` on the KafkaTemplate constructor |
-| Interactions stored in memory, not PostgreSQL | Backend team | Replace `InteractionRepository` map with JPA |
-| CUS-9999 → 500 instead of 404 | Backend team | Map `UnknownCustomerException` to 404 |
-| Angular 19 / spring-webmvc CVEs (time-boxed exceptions, expire 2026-11-30) | Frontend / Backend | See security-baseline.md |
-| k3s cluster access (kubeconfig, network) | Brandon + instructor | See k3s-deployment.md |
+| Kafka events never sent - `InteractionEventPublisher` is created with its no-arg constructor, so it has no KafkaTemplate (broker address itself is fixed) | Backend |
+| Interactions are kept in memory, not saved to PostgreSQL (`InteractionRepository`) | Backend |
+| Unknown customer (CUS-9999) returns 500 instead of 404 | Backend |
+| Angular 19 / spring-webmvc vulnerabilities need major upgrades - accepted until 2026-11-30 | Frontend / Backend |

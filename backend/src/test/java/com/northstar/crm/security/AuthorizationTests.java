@@ -28,7 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Lab 51 AuthorizationTests: proves deny-by-default (401 / 403 / 200) on the real security filter chain.
+ * Authorization tests: proves deny-by-default (401 / 403 / 200) on the real security filter chain.
  * Test-only synthetic secrets below - never reuse outside tests.
  */
 @WebMvcTest(controllers = {CustomerController.class, InteractionController.class, AuthController.class})

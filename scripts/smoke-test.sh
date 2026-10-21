@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Northstar CRM smoke test - happy path AND denied paths (Lab 51: "smoke must prove 401 and 200").
+# Northstar CRM smoke test - checks the app works AND that unauthorized requests are rejected.
 #
 # Usage:
 #   UI_URL=http://localhost:4200 API_URL=http://localhost:8080 \

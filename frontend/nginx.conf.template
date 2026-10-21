@@ -14,7 +14,7 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
-    # Hardening headers (ZAP baseline findings, Module 40/51)
+    # Security headers
     server_tokens off;   # don't leak the nginx version in the Server header
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-Frame-Options "DENY" always;

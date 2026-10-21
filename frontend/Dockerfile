@@ -1,8 +1,11 @@
 # syntax=docker/dockerfile:1
 # Northstar CRM - Angular agent UI image
-# Multi-stage: build with Node 22, serve static files with unprivileged nginx.
+#
+# Local (docker compose): stage 1 builds the Angular app, stage 2 serves it with nginx.
+# CI (GitHub Actions):    the "frontend" job already ran `ng build`, so it replaces stage 1 with
+#                         its tested output (build-contexts: build=frontend/.ci) - no second build.
 
-# ---------- Build stage ----------
+# ---------- Stage 1: build (skipped in CI) ----------
 FROM node:22-alpine AS build
 WORKDIR /workspace
 
@@ -14,7 +17,7 @@ RUN npx ng build --configuration production \
  && mkdir -p /out \
  && if [ -d dist/*/browser ]; then cp -r dist/*/browser/. /out/; else cp -r dist/*/. /out/; fi
 
-# ---------- Runtime stage ----------
+# ---------- Stage 2: runtime ----------
 FROM nginxinc/nginx-unprivileged:1.30-alpine
 LABEL org.opencontainers.image.title="northstar-crm-frontend" \
       org.opencontainers.image.description="Northstar CRM Angular agent UI" \

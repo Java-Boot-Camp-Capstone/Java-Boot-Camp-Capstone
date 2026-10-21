@@ -1,13 +1,16 @@
-# Northstar CRM - CI/CD pipeline (Lab 51 gate order)
+# CI - build, test, scan and package Northstar CRM (target: under 2 minutes)
 #
-#   secret-scan ─┐
-#   backend ─────┤
-#   frontend ────┼─> images: build once -> image scan -> e2e smoke + DAST -> push (main/Development) -> digest
-#   dep-scan ────┘                                                                 │
-#   codeql (parallel, results in the Security tab)                                 └─> deploy (k3s, by digest, gated)
+# Delivery path (docs/documentation/architecture.md):
+#   GitHub -> GitHub Actions -> tests and security checks -> Docker image -> k3s deployment
 #
-# Run it from the Actions tab: Actions -> CI -> "Run workflow" (pick branch + publish/deploy options).
-# Third-party actions are pinned to a full commit SHA (supply-chain hardening); the tag is in the comment.
+#   backend  job:  mvn verify -> image from the tested jar  -> Trivy scan -> push (main only)
+#   frontend job:  ng test + ng build -> image from tested dist -> Trivy scan -> push (main only)
+#   release  job:  (main only) records both image digests for the k3s deploy
+#
+# backend and frontend run in parallel. CodeQL runs in its own workflow (codeql.yml) so it
+# never slows this one down. Deploy is a separate workflow (deploy.yml).
+#
+# Run by hand: Actions tab -> CI -> "Run workflow".
 
 name: CI
 
@@ -19,87 +22,43 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: "Push images to GHCR (always on for main/Development pushes)"
+        description: "Push images to GitHub Container Registry (always on for pushes to main)"
         type: boolean
         default: false
-      deploy:
-        description: "Deploy the published images to k3s (needs the environment's secrets)"
-        type: boolean
-        default: false
-      environment:
-        description: "k3s target environment"
-        type: choice
-        options: [dev, staging, production]
-        default: dev
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# Least privilege: GITHUB_TOKEN is read-only by default; jobs that need more ask for it explicitly.
-# (Works even when the org greys out "Workflow permissions" and forces read-only defaults.)
+# GITHUB_TOKEN is read-only unless a job asks for more.
 permissions:
   contents: read
 
 env:
-  JAVA_VERSION: "21"
-  NODE_VERSION: "22"
+  # Images are pushed on every push to main (github-actions-plan.md) or when "publish" is ticked.
+  PUBLISH: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || inputs.publish == true }}
   TRIVY_IMAGE: aquasec/trivy:0.76.1
-  GITLEAKS_IMAGE: zricethezav/gitleaks:v8.30.1
-  ZAP_IMAGE: zaproxy/zap-stable:2.17.0
 
 jobs:
-  # Skips jobs cleanly on branches that do not contain backend/ or frontend/ yet.
-  detect:
-    name: Detect components
-    runs-on: ubuntu-latest
-    outputs:
-      backend: ${{ steps.check.outputs.backend }}
-      frontend: ${{ steps.check.outputs.frontend }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - id: check
-        run: |
-          [ -f backend/pom.xml ] && echo "backend=true" >> "$GITHUB_OUTPUT" || echo "backend=false" >> "$GITHUB_OUTPUT"
-          [ -f frontend/package.json ] && echo "frontend=true" >> "$GITHUB_OUTPUT" || echo "frontend=false" >> "$GITHUB_OUTPUT"
-
-  secret-scan:
-    name: Secret scan (gitleaks, full history)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-      - name: gitleaks
-        run: |
-          docker run --rm -v "$PWD:/repo" "$GITLEAKS_IMAGE" git /repo \
-            --redact --no-banner --report-format json --report-path /repo/gitleaks-report.json
-      - name: Upload report
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: security-gitleaks
-          path: gitleaks-report.json
-          if-no-files-found: ignore
-
   backend:
-    name: Backend - Maven verify
-    needs: detect
-    if: needs.detect.outputs.backend == 'true'
+    name: Backend (test, image, scan)
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
+          java-version: "21"
           cache: maven
           cache-dependency-path: backend/pom.xml
-      - name: Build and test (unit + AuthorizationTests 401/403/200)
-        run: mvn -B verify
+
+      - name: Test and package (mvn verify)
+        working-directory: backend
+        run: mvn -B -ntp verify
+
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -108,66 +67,159 @@ jobs:
           path: backend/target/surefire-reports/
           if-no-files-found: ignore
 
+      - name: Build image from the tested jar
+        id: image
+        run: |
+          mkdir -p backend/.ci/out && cp backend/target/*.jar backend/.ci/out/app.jar
+          echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/northstar-crm-backend" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: backend
+          build-contexts: build=backend/.ci        # skip the Maven stage - use the jar we just tested
+          load: true
+          tags: ${{ steps.image.outputs.name }}:sha-${{ github.sha }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - id: week
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+      # The scanner database is ~3 GB. Download it once a week, then reuse it so scans take seconds.
+      - name: Restore Trivy database cache (refreshed weekly)
+        id: trivy-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ steps.week.outputs.week }}
+          restore-keys: trivy-db-
+      - name: Security scan (Trivy) - block on CRITICAL, and on HIGH in Java libraries
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}:sha-${{ github.sha }}
+          CACHED: ${{ steps.trivy-cache.outputs.cache-matched-key != '' }}
+        run: |
+          skip=""; [ "$CACHED" = "true" ] && skip="--skip-db-update --skip-java-db-update"
+          trivy() { docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+                      -v "$PWD:/repo" "$TRIVY_IMAGE" image --quiet --scanners vuln --ignore-unfixed \
+                      --ignorefile /repo/.trivyignore.yaml "$@" "$IMAGE"; }
+          # shellcheck disable=SC2086
+          trivy --severity CRITICAL --exit-code 1 $skip
+          trivy --pkg-types library --severity HIGH --exit-code 1 --skip-db-update --skip-java-db-update
+
+      - name: Log in to GitHub Container Registry
+        if: env.PUBLISH == 'true'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push image and record digest
+        if: env.PUBLISH == 'true'
+        env:
+          REPO: ${{ steps.image.outputs.name }}
+        run: |
+          docker push "$REPO:sha-$GITHUB_SHA"
+          docker inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$REPO:sha-$GITHUB_SHA" | grep "^$REPO@" | head -1 > image-backend.txt
+          cat image-backend.txt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: env.PUBLISH == 'true'
+        with:
+          name: image-backend
+          path: image-backend.txt
+
   frontend:
-    name: Frontend - Angular test + build
-    needs: detect
-    if: needs.detect.outputs.frontend == 'true'
+    name: Frontend (test, build, image, scan)
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - run: npm ci
-      # ubuntu-24.04 blocks Chrome's user-namespace sandbox; wrap Chrome with --no-sandbox (CI only)
-      - name: Configure headless Chrome for CI
+          node-version: "22"
+      - name: Cache node_modules
+        id: npm-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: frontend/node_modules
+          key: node-modules-${{ hashFiles('frontend/package-lock.json') }}
+      - name: Install (npm ci)
+        if: steps.npm-cache.outputs.cache-hit != 'true'
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: Unit tests (headless Chrome)
+        working-directory: frontend
         run: |
+          # ubuntu-24.04 blocks Chrome's sandbox for unprivileged users; CI-only workaround
           printf '#!/bin/sh\nexec %s --no-sandbox "$@"\n' "$(command -v google-chrome)" > "$RUNNER_TEMP/chrome-ci"
           chmod +x "$RUNNER_TEMP/chrome-ci"
-          echo "CHROME_BIN=$RUNNER_TEMP/chrome-ci" >> "$GITHUB_ENV"
-      - name: Unit tests (headless Chrome)
-        run: npx ng test --watch=false --browsers=ChromeHeadless --code-coverage
+          CHROME_BIN="$RUNNER_TEMP/chrome-ci" npx ng test --watch=false --browsers=ChromeHeadless
       - name: Production build
+        working-directory: frontend
         run: npx ng build --configuration production
-      - name: Upload coverage
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: frontend-coverage
-          path: frontend/coverage/
-          if-no-files-found: ignore
 
-  dependency-scan:
-    name: Dependency scan (npm lockfile, HIGH+)
-    needs: detect
-    if: needs.detect.outputs.frontend == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # Maven libraries are scanned inside the built backend image (images job) - the same jar that ships.
-      - name: Trivy fs - frontend/package-lock.json
+      - name: Build image from the tested build output
+        id: image
         run: |
-          mkdir -p reports && chmod 777 reports
-          docker run --rm -v "$PWD:/repo" "$TRIVY_IMAGE" fs --quiet --scanners vuln \
-            --severity HIGH,CRITICAL --ignore-unfixed --ignorefile /repo/.trivyignore.yaml \
-            --format table --output /repo/reports/trivy-npm.txt --exit-code 1 /repo/frontend/package-lock.json
-      - name: Show report
-        if: always()
-        run: cat reports/trivy-npm.txt 2>/dev/null || true
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
+          mkdir -p frontend/.ci/out
+          src=$(find frontend/dist -mindepth 2 -maxdepth 2 -type d -name browser | head -1)
+          [ -n "$src" ] || src=$(find frontend/dist -mindepth 1 -maxdepth 1 -type d | head -1)
+          cp -r "$src"/. frontend/.ci/out/
+          echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/northstar-crm-frontend" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          name: security-dependency-scan
-          path: reports/
-          if-no-files-found: ignore
+          context: frontend
+          build-contexts: build=frontend/.ci       # skip the Node stage - use the dist we just built
+          load: true
+          tags: ${{ steps.image.outputs.name }}:sha-${{ github.sha }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+      - id: week
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+      - name: Restore Trivy database cache (refreshed weekly)
+        id: trivy-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-fe-${{ steps.week.outputs.week }}
+          restore-keys: trivy-db-fe-
+      - name: Security scan (Trivy) - block on CRITICAL
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}:sha-${{ github.sha }}
+          CACHED: ${{ steps.trivy-cache.outputs.cache-matched-key != '' }}
+        run: |
+          skip=""; [ "$CACHED" = "true" ] && skip="--skip-db-update"
+          # shellcheck disable=SC2086
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+            -v "$PWD:/repo" "$TRIVY_IMAGE" image --quiet --scanners vuln --ignore-unfixed \
+            --ignorefile /repo/.trivyignore.yaml --severity CRITICAL --exit-code 1 $skip "$IMAGE"
+
+      - name: Log in to GitHub Container Registry
+        if: env.PUBLISH == 'true'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push image and record digest
+        if: env.PUBLISH == 'true'
+        env:
+          REPO: ${{ steps.image.outputs.name }}
+        run: |
+          docker push "$REPO:sha-$GITHUB_SHA"
+          docker inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$REPO:sha-$GITHUB_SHA" | grep "^$REPO@" | head -1 > image-frontend.txt
+          cat image-frontend.txt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: env.PUBLISH == 'true'
+        with:
+          name: image-frontend
+          path: image-frontend.txt
 
   dependency-review:
-    name: Dependency review (PR)
+    name: Dependency review (pull requests)
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
@@ -177,261 +229,47 @@ jobs:
       - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: high
-          comment-summary-in-pr: on-failure
 
-  codeql:
-    name: CodeQL SAST (${{ matrix.language }})
-    needs: detect
+  release:
+    name: Release (record image digests)
+    needs: [backend, frontend]
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || inputs.publish == true
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - language: java-kotlin
-            component: backend
-          - language: javascript-typescript
-            component: frontend
+      packages: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Skip if component missing
-        id: gate
-        env:
-          HAS_BACKEND: ${{ needs.detect.outputs.backend }}
-          HAS_FRONTEND: ${{ needs.detect.outputs.frontend }}
-        run: |
-          if [ "${{ matrix.component }}" = "backend" ]; then echo "run=$HAS_BACKEND" >> "$GITHUB_OUTPUT"; else echo "run=$HAS_FRONTEND" >> "$GITHUB_OUTPUT"; fi
-      - uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
-        if: steps.gate.outputs.run == 'true'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          languages: ${{ matrix.language }}
-          build-mode: none
-          queries: security-and-quality
-      - uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
-        if: steps.gate.outputs.run == 'true'
-        with:
-          category: /language:${{ matrix.language }}
-
-  images:
-    name: Images - build, scan, e2e smoke, publish
-    needs: [detect, secret-scan, backend, frontend, dependency-scan]
-    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.detect.outputs.backend == 'true' && needs.detect.outputs.frontend == 'true' }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write          # only this job may push to GHCR
-    outputs:
-      published: ${{ steps.flags.outputs.publish }}
-      backend_image: ${{ steps.push.outputs.backend_image }}
-      frontend_image: ${{ steps.push.outputs.frontend_image }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Decide publish + image names
-        id: flags
-        env:
-          INPUT_PUBLISH: ${{ inputs.publish }}
-          INPUT_DEPLOY: ${{ inputs.deploy }}
-        run: |
-          publish=false
-          if [ "$GITHUB_EVENT_NAME" = "push" ] && { [ "$GITHUB_REF" = "refs/heads/main" ] || [ "$GITHUB_REF" = "refs/heads/Development" ]; }; then publish=true; fi
-          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && { [ "$INPUT_PUBLISH" = "true" ] || [ "$INPUT_DEPLOY" = "true" ]; }; then publish=true; fi
-          owner="${GITHUB_REPOSITORY_OWNER,,}"
-          {
-            echo "publish=$publish"
-            echo "backend=ghcr.io/$owner/northstar-crm-backend"
-            echo "frontend=ghcr.io/$owner/northstar-crm-frontend"
-          } >> "$GITHUB_OUTPUT"
-          echo "publish=$publish"
-
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-
-      - id: meta-backend
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
-        with:
-          images: ${{ steps.flags.outputs.backend }}
-          tags: |
-            type=sha,format=long
-            type=ref,event=branch
-      - id: meta-frontend
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
-        with:
-          images: ${{ steps.flags.outputs.frontend }}
-          tags: |
-            type=sha,format=long
-            type=ref,event=branch
-
-      # 1) BUILD ONCE - loaded into the runner's Docker, not pushed yet
-      - name: Build backend image
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: backend
-          load: true
-          push: false
-          tags: ${{ steps.meta-backend.outputs.tags }}
-          labels: ${{ steps.meta-backend.outputs.labels }}
-          cache-from: type=gha,scope=backend
-          cache-to: type=gha,mode=max,scope=backend
-      - name: Build frontend image
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: frontend
-          load: true
-          push: false
-          tags: ${{ steps.meta-frontend.outputs.tags }}
-          labels: ${{ steps.meta-frontend.outputs.labels }}
-          cache-from: type=gha,scope=frontend
-          cache-to: type=gha,mode=max,scope=frontend
-
-      # 2) SCAN BEFORE PUSH - CRITICAL blocks; Java libraries in the jar block at HIGH (exceptions: .trivyignore.yaml)
-      - name: Trivy image scan (gate)
-        env:
-          BACKEND_REF: ${{ steps.flags.outputs.backend }}:sha-${{ github.sha }}
-          FRONTEND_REF: ${{ steps.flags.outputs.frontend }}:sha-${{ github.sha }}
-        run: |
-          mkdir -p reports && chmod 777 reports
-          trivy() { docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/repo" -v trivy-cache:/root/.cache \
-                      "$TRIVY_IMAGE" "$@" --quiet --scanners vuln --ignore-unfixed --ignorefile /repo/.trivyignore.yaml; }
-          # evidence reports (never fail)
-          trivy image --severity HIGH,CRITICAL --format table --output /repo/reports/trivy-backend.txt "$BACKEND_REF"
-          trivy image --severity HIGH,CRITICAL --format table --output /repo/reports/trivy-frontend.txt "$FRONTEND_REF"
-          # gates
-          rc=0
-          trivy image --severity CRITICAL --exit-code 1 "$BACKEND_REF"  || rc=1
-          trivy image --severity CRITICAL --exit-code 1 "$FRONTEND_REF" || rc=1
-          trivy image --pkg-types library --severity HIGH,CRITICAL --exit-code 1 "$BACKEND_REF" || rc=1
-          cat reports/trivy-backend.txt reports/trivy-frontend.txt
-          exit $rc
-
-      # 3) E2E SMOKE + DAST against the exact images that will be pushed
-      - name: Start stack (docker compose, throwaway CI secrets)
-        env:
-          BACKEND_IMAGE: ${{ steps.flags.outputs.backend }}:sha-${{ github.sha }}
-          FRONTEND_IMAGE: ${{ steps.flags.outputs.frontend }}:sha-${{ github.sha }}
-        run: |
-          gen() { openssl rand -hex 24; }
-          {
-            echo "POSTGRES_PASSWORD=$(gen)"
-            echo "APP_JWT_SECRET=$(gen)$(gen)"
-            echo "APP_DEMO_AGENT_PASSWORD=$(gen)"
-            echo "APP_DEMO_MANAGER_PASSWORD=$(gen)"
-          } > "$RUNNER_TEMP/ci.env"
-          while IFS='=' read -r _ v; do echo "::add-mask::$v"; done < "$RUNNER_TEMP/ci.env"
-          docker compose --env-file "$RUNNER_TEMP/ci.env" up -d --no-build --wait --wait-timeout 300
-          docker compose --env-file "$RUNNER_TEMP/ci.env" ps
-      - name: Smoke test (401 / 400 / 200 / 201)
-        run: |
-          set -a; . "$RUNNER_TEMP/ci.env"; set +a
-          AGENT_PASSWORD="$APP_DEMO_AGENT_PASSWORD" SMOKE_LABEL="docker compose (CI)" bash scripts/smoke-test.sh
-      - name: DAST - OWASP ZAP baseline (report only)
-        run: |
-          mkdir -p zap && chmod 777 zap
-          docker run --rm --network host -v "$PWD/zap:/zap/wrk:rw" "$ZAP_IMAGE" \
-            zap-baseline.py -t http://localhost:4200 -r zap-report.html -J zap-report.json -I || true
-          ls zap
-      - name: Container logs on failure
-        if: failure()
-        run: docker compose --env-file "$RUNNER_TEMP/ci.env" logs --tail=200
-      - name: Stop stack
-        if: always()
-        run: docker compose --env-file "$RUNNER_TEMP/ci.env" down -v || true
-
-      # 4) PUBLISH the same images (no rebuild) and record their digests
+          pattern: image-*
+          merge-multiple: true
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        if: steps.flags.outputs.publish == 'true'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Push images + record digests
-        id: push
+      # Both images passed tests + scans: tag them with the branch name (no rebuild, same digest).
+      - name: Tag tested images and write release manifest
         env:
-          PUBLISH: ${{ steps.flags.outputs.publish }}
-          BACKEND_REPO: ${{ steps.flags.outputs.backend }}
-          FRONTEND_REPO: ${{ steps.flags.outputs.frontend }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          backend_image="not-published"; frontend_image="not-published"
-          if [ "$PUBLISH" = "true" ]; then
-            docker push --all-tags "$BACKEND_REPO"
-            docker push --all-tags "$FRONTEND_REPO"
-            backend_image=$(docker inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$BACKEND_REPO:sha-$GITHUB_SHA" | grep "^$BACKEND_REPO@" | head -1)
-            frontend_image=$(docker inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$FRONTEND_REPO:sha-$GITHUB_SHA" | grep "^$FRONTEND_REPO@" | head -1)
-          fi
-          echo "backend_image=$backend_image" >> "$GITHUB_OUTPUT"
-          echo "frontend_image=$frontend_image" >> "$GITHUB_OUTPUT"
-          cat > reports/release-manifest.json <<EOF
+          backend=$(cat image-backend.txt); frontend=$(cat image-frontend.txt)
+          tag="${GITHUB_REF_NAME//\//-}"
+          # --prefer-index=false: copy the manifest as-is so the tag points at the SAME digest CI scanned
+          # (the default wraps it in a new index with a different digest).
+          docker buildx imagetools create --prefer-index=false -t "${backend%@*}:$tag" "$backend"
+          docker buildx imagetools create --prefer-index=false -t "${frontend%@*}:$tag" "$frontend"
+          cat > release-manifest.json <<EOF
           {
             "gitSha": "$GITHUB_SHA",
-            "ref": "$GITHUB_REF_NAME",
-            "pipelineRunUrl": "$RUN_URL",
-            "builtAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "published": $PUBLISH,
-            "backendImage": "$backend_image",
-            "frontendImage": "$frontend_image",
-            "backendImageId": "$(docker inspect --format '{{.Id}}' "$BACKEND_REPO:sha-$GITHUB_SHA")",
-            "frontendImageId": "$(docker inspect --format '{{.Id}}' "$FRONTEND_REPO:sha-$GITHUB_SHA")"
+            "branch": "$GITHUB_REF_NAME",
+            "pipelineRun": "$RUN_URL",
+            "backendImage": "$backend",
+            "frontendImage": "$frontend"
           }
           EOF
-          cat reports/release-manifest.json
-          {
-            echo "### Release manifest"
-            echo '```json'; cat reports/release-manifest.json; echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload release evidence
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+          { echo "### Release manifest (deploy uses these digests)"; echo '```json'; cat release-manifest.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: release-evidence
-          path: |
-            reports/
-            zap/
-          if-no-files-found: ignore
-
-  deploy:
-    name: Deploy to k3s (${{ inputs.environment || 'dev' }})
-    needs: images
-    if: >-
-      needs.images.outputs.published == 'true' && (
-        (github.event_name == 'workflow_dispatch' && inputs.deploy) ||
-        (github.event_name == 'push' && github.ref == 'refs/heads/Development' && vars.K3S_AUTO_DEPLOY == 'true')
-      )
-    # GitHub-hosted runners must be able to reach the k3s API server. If the cluster is private,
-    # set repo variable K3S_RUNNER=self-hosted and register a runner inside that network.
-    runs-on: ${{ vars.K3S_RUNNER || 'ubuntu-latest' }}
-    environment:
-      name: ${{ inputs.environment || 'dev' }}     # protection rules + secrets live on the GitHub Environment
-    permissions:
-      contents: read
-    env:
-      ENV_NAME: ${{ inputs.environment || 'dev' }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Write kubeconfig from secret (never echoed, removed after job)
-        env:
-          KUBECONFIG_B64: ${{ secrets.KUBECONFIG_B64 }}
-        run: |
-          if [ -z "$KUBECONFIG_B64" ]; then
-            echo "::error::Secret KUBECONFIG_B64 is not set on the '$ENV_NAME' environment. See docs/documentation/k3s-deployment.md"
-            exit 1
-          fi
-          umask 077
-          echo "$KUBECONFIG_B64" | base64 -d > "$RUNNER_TEMP/kubeconfig"
-          echo "KUBECONFIG=$RUNNER_TEMP/kubeconfig" >> "$GITHUB_ENV"
-      - name: Deploy by digest + smoke + auto-rollback
-        env:
-          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE || format('crm-{0}', inputs.environment == 'staging' && 'stage' || inputs.environment == 'production' && 'prod' || 'dev') }}
-          BACKEND_IMAGE: ${{ needs.images.outputs.backend_image }}
-          FRONTEND_IMAGE: ${{ needs.images.outputs.frontend_image }}
-          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-          APP_JWT_SECRET: ${{ secrets.APP_JWT_SECRET }}
-          APP_DEMO_AGENT_PASSWORD: ${{ secrets.APP_DEMO_AGENT_PASSWORD }}
-          APP_DEMO_MANAGER_PASSWORD: ${{ secrets.APP_DEMO_MANAGER_PASSWORD }}
-          GHCR_PULL_USER: ${{ github.actor }}
-          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
-        run: bash scripts/k3s-deploy.sh
-      - name: Remove kubeconfig
-        if: always()
-        run: rm -f "$RUNNER_TEMP/kubeconfig"
+          name: release-manifest
+          path: release-manifest.json

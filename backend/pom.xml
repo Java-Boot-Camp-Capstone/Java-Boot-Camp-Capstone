@@ -35,7 +35,7 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
-        <!-- Security baseline (Lab 51): JWT resource server, deny-by-default RBAC, health probes -->
+        <!-- Security: JWT validation, role-based access (deny by default), health endpoint for probes -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>

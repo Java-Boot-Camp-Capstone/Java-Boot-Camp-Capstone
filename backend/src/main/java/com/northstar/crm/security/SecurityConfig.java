@@ -32,7 +32,7 @@ import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Security baseline (Module 49 ADR / Lab 51): deny-by-default JWT resource server.
+ * Security: Spring Boot validates JWTs and enforces role-based access (architecture.md).
  *
  * <ul>
  *   <li>Anonymous request to /api/** -> 401</li>

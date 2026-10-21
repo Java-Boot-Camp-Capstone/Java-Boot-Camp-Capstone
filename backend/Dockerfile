@@ -1,8 +1,11 @@
 # syntax=docker/dockerfile:1
 # Northstar CRM - Spring Boot API image
-# Multi-stage: build with Maven + JDK 21, run on a slim JRE 21 as a non-root user.
+#
+# Local (docker compose): stage 1 compiles the jar with Maven, stage 2 runs it on a slim JRE.
+# CI (GitHub Actions):    the "backend" job already ran `mvn verify`, so it replaces stage 1 with
+#                         the tested jar (build-contexts: build=backend/.ci) - no second compile.
 
-# ---------- Build stage ----------
+# ---------- Stage 1: build (skipped in CI) ----------
 FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /workspace
 
@@ -11,11 +14,10 @@ COPY pom.xml .
 RUN mvn -B -q dependency:go-offline
 
 COPY src ./src
-# Tests run in the GitHub Actions "backend" job; skip here so the image build stays fast.
 RUN mvn -B -q package -DskipTests \
- && cp target/*.jar /workspace/app.jar
+ && mkdir -p /out && cp target/*.jar /out/app.jar
 
-# ---------- Runtime stage ----------
+# ---------- Stage 2: runtime ----------
 FROM eclipse-temurin:21-jre-alpine
 LABEL org.opencontainers.image.title="northstar-crm-backend" \
       org.opencontainers.image.description="Northstar CRM Spring Boot REST API" \
@@ -26,7 +28,7 @@ LABEL org.opencontainers.image.title="northstar-crm-backend" \
 RUN apk upgrade --no-cache \
  && addgroup -S -g 10001 app && adduser -S -u 10001 -G app app
 WORKDIR /app
-COPY --from=build --chown=app:app /workspace/app.jar app.jar
+COPY --from=build --chown=app:app /out/app.jar app.jar
 USER 10001:10001
 
 EXPOSE 8080

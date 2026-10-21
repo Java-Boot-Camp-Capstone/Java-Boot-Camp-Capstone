@@ -23,3 +23,6 @@ Thumbs.db
 # k3s deploy overlays generated at deploy time
 k8s/.deploy-*
 .vscode/
+
+# CI build contexts (prebuilt jar / Angular dist)
+.ci/

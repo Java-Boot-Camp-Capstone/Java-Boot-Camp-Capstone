@@ -1,0 +1,92 @@
+# Deploy to k3s - deploys images that CI already built, tested and scanned (never rebuilds).
+#
+# Per docs/documentation/github-actions-plan.md + environment-strategy.md:
+#   * Manual:      Actions tab -> "Deploy to k3s" -> Run workflow -> choose environment + image tag
+#   * Release tag: pushing a tag like v1.0.0 deploys that commit's images to staging
+# Each environment is a GitHub Environment (dev, test, staging, production) holding its own
+# kubeconfig + secrets and its own approval rules. Setup: docs/documentation/k3s-deployment.md
+
+name: Deploy to k3s
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        type: choice
+        options: [dev, test, staging, production]
+        default: dev
+      image_tag:
+        description: "Image tag to deploy (main = latest tested build of main, or sha-<commit>)"
+        type: string
+        default: main
+  push:
+    tags: ["v*"]
+
+concurrency:
+  group: deploy-${{ inputs.environment || 'staging' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to ${{ inputs.environment || 'staging' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment || 'staging' }}
+    permissions:
+      contents: read
+      packages: read
+    env:
+      ENV_NAME: ${{ inputs.environment || 'staging' }}
+      IMAGE_TAG: ${{ inputs.image_tag || format('sha-{0}', github.sha) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve image tag -> digest (deploy exactly what CI tested)
+        id: images
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          for c in backend frontend; do
+            repo="ghcr.io/$owner/northstar-crm-$c"
+            digest=$(docker buildx imagetools inspect "$repo:$IMAGE_TAG" --format '{{json .Manifest}}' | jq -r .digest)
+            [ -n "$digest" ] && [ "$digest" != "null" ] || { echo "::error::$repo:$IMAGE_TAG not found - run CI on main (or tick publish) first"; exit 1; }
+            echo "$c=$repo@$digest" >> "$GITHUB_OUTPUT"
+            echo "$c -> $repo@$digest"
+          done
+
+      - name: Write kubeconfig from environment secret
+        env:
+          KUBECONFIG_B64: ${{ secrets.KUBECONFIG_B64 }}
+        run: |
+          if [ -z "$KUBECONFIG_B64" ]; then
+            echo "::error::Secret KUBECONFIG_B64 is missing on the '$ENV_NAME' environment (see docs/documentation/k3s-deployment.md)"
+            exit 1
+          fi
+          umask 077
+          echo "$KUBECONFIG_B64" | base64 -d > "$RUNNER_TEMP/kubeconfig"
+          echo "KUBECONFIG=$RUNNER_TEMP/kubeconfig" >> "$GITHUB_ENV"
+
+      - name: Deploy, smoke test, roll back on failure
+        env:
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE || (inputs.environment == 'test' && 'crm-test') || (inputs.environment == 'production' && 'crm-prod') || (inputs.environment == 'dev' && 'crm-dev') || 'crm-stage' }}
+          BACKEND_IMAGE: ${{ steps.images.outputs.backend }}
+          FRONTEND_IMAGE: ${{ steps.images.outputs.frontend }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          APP_JWT_SECRET: ${{ secrets.APP_JWT_SECRET }}
+          APP_DEMO_AGENT_PASSWORD: ${{ secrets.APP_DEMO_AGENT_PASSWORD }}
+          APP_DEMO_MANAGER_PASSWORD: ${{ secrets.APP_DEMO_MANAGER_PASSWORD }}
+          GHCR_PULL_USER: ${{ github.actor }}
+          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+        run: bash scripts/k3s-deploy.sh
+
+      - name: Remove kubeconfig
+        if: always()
+        run: rm -f "$RUNNER_TEMP/kubeconfig"
