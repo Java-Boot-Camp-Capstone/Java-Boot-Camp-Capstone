@@ -3,8 +3,10 @@ package com.northstar.crm.service;
 
 import com.northstar.crm.api.dto.CreateInteractionRequest;
 import com.northstar.crm.api.dto.InteractionResponse;
+import com.northstar.crm.domain.Customer;
 import com.northstar.crm.domain.Interaction;
 import com.northstar.crm.messaging.InteractionEventPublisher;
+import com.northstar.crm.repo.CustomerRepository;
 import com.northstar.crm.repo.InteractionRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
@@ -19,12 +21,15 @@ public class InteractionService {
             "lab-request-001";
 
     private final InteractionRepository interactionRepository;
+    private final CustomerRepository customerRepository;
     private final InteractionEventPublisher eventPublisher;
 
     public InteractionService(
             InteractionRepository interactionRepository,
+            CustomerRepository customerRepository,
             InteractionEventPublisher eventPublisher) {
         this.interactionRepository = interactionRepository;
+        this.customerRepository = customerRepository;
         this.eventPublisher = eventPublisher;
     }
 
@@ -37,14 +42,15 @@ public class InteractionService {
                 correlationHeader,
                 request.correlationId());
 
-        if (!interactionRepository.customerExists(
-                request.customerId())) {
-            throw new UnknownCustomerException(
-                    request.customerId());
-        }
+        Customer customer = customerRepository
+                .findByPublicId(request.customerId())
+                .orElseThrow(() ->
+                        new UnknownCustomerException(
+                                request.customerId()));
 
         Interaction interaction = new Interaction();
-        interaction.setCustomerId(request.customerId());
+        interaction.setId(java.util.UUID.randomUUID());
+        interaction.setCustomerId(customer.getCustomerId());
         interaction.setInteractionType(request.interactionType());
         interaction.setSummary(request.summary());
         interaction.setCorrelationId(correlationId);
@@ -52,15 +58,22 @@ public class InteractionService {
 
         Interaction saved = interactionRepository.save(interaction);
 
-        eventPublisher.publish(saved);
+        eventPublisher.publish(saved, customer.getPublicId());
 
-        return toResponse(saved);
+        return toResponse(saved, customer.getPublicId());
     }
 
     public List<InteractionResponse> getAll() {
         return interactionRepository.findAll()
                 .stream()
-                .map(InteractionService::toResponse)
+                .map(interaction -> {
+                    String publicId = customerRepository
+                            .findById(interaction.getCustomerId())
+                            .map(Customer::getPublicId)
+                            .orElse(null);
+
+                    return toResponse(interaction, publicId);
+                })
                 .toList();
     }
 
@@ -80,14 +93,16 @@ public class InteractionService {
     }
 
     private static InteractionResponse toResponse(
-            Interaction interaction) {
+            Interaction interaction,
+            String customerPublicId) {
 
         return new InteractionResponse(
                 interaction.getId(),
-                interaction.getCustomerId(),
+                customerPublicId,
                 interaction.getInteractionType(),
                 interaction.getSummary(),
                 interaction.getCorrelationId(),
                 interaction.getCreatedAt());
     }
 }
+

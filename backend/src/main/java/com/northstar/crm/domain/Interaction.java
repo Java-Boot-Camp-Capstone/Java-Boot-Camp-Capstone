@@ -1,18 +1,38 @@
+
 package com.northstar.crm.domain;
 
-import jakarta.validation.constraints.NotBlank;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 
 import java.time.Instant;
 import java.util.UUID;
 
-/** In-memory / session stub. Full path: map to JPA entity + Flyway. */
+@Entity
+@Table(name = "customer_interaction")
 public class Interaction {
 
+    @Id
+    @Column(name = "interaction_id", nullable = false)
     private UUID id;
-    private String customerId;
+
+    @Column(name = "customer_id", nullable = false)
+    private Long customerId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "interaction_type", nullable = false)
     private InteractionType interactionType;
+
+    @Column(name = "summary", nullable = false, length = 1024)
     private String summary;
+
+    @Column(name = "correlation_id", length = 64)
     private String correlationId;
+
+    @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
     public UUID getId() {
@@ -23,11 +43,11 @@ public class Interaction {
         this.id = id;
     }
 
-    public String getCustomerId() {
+    public Long getCustomerId() {
         return customerId;
     }
 
-    public void setCustomerId(String customerId) {
+    public void setCustomerId(Long customerId) {
         this.customerId = customerId;
     }
 
@@ -35,7 +55,7 @@ public class Interaction {
         return interactionType;
     }
 
-    public void setInteractionType(@NotBlank InteractionType interactionType) {
+    public void setInteractionType(InteractionType interactionType) {
         this.interactionType = interactionType;
     }
 
