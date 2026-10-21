@@ -1,6 +1,7 @@
 
 import { Injectable } from '@angular/core';
-import { Observable, of, throwError } from 'rxjs';
+import { HttpClient } from '@angular/common/http';
+import { Observable, tap } from 'rxjs';
 
 export interface LoginResponse {
   token: string;
@@ -10,29 +11,25 @@ export interface LoginResponse {
   providedIn: 'root'
 })
 export class AuthService {
-  private readonly demoUsername = 'crm';
-  private readonly demoPassword = 'crm';
+  private readonly apiUrl =
+    'http://localhost:8080/api/v1/auth';
+
+  constructor(private http: HttpClient) {}
 
   login(
     username: string,
     password: string
   ): Observable<LoginResponse> {
-    if (
-      username !== this.demoUsername ||
-      password !== this.demoPassword
-    ) {
-      return throwError(() =>
-        new Error('Invalid username or password.')
+    return this.http
+      .post<LoginResponse>(`${this.apiUrl}/login`, {
+        username,
+        password
+      })
+      .pipe(
+        tap(response => {
+          localStorage.setItem('token', response.token);
+        })
       );
-    }
-
-    const response: LoginResponse = {
-      token: 'lab-demo-token'
-    };
-
-    localStorage.setItem('token', response.token);
-
-    return of(response);
   }
 
   logout(): void {

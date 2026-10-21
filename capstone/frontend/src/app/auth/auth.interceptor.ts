@@ -1,19 +1,24 @@
+
 import { HttpInterceptorFn } from '@angular/common/http';
 
-export const authInterceptor: HttpInterceptorFn = (
-  req,
-  next
-) => {
+export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const token = localStorage.getItem('token');
 
-  const request = token
-    ? req.clone({
-        setHeaders: {
-          Authorization: `Bearer ${token}`,
-          'X-Correlation-Id': 'lab-request-001'
-        }
-      })
-    : req;
+  const isBackendRequest =
+    req.url.startsWith('http://localhost:8080/');
 
-  return next(request);
+  const isLoginRequest =
+    req.url.includes('/api/v1/auth/login');
+
+  if (!token || !isBackendRequest || isLoginRequest) {
+    return next(req);
+  }
+
+  return next(
+    req.clone({
+      setHeaders: {
+        Authorization: `Bearer ${token}`
+      }
+    })
+  );
 };

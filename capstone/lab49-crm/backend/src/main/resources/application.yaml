@@ -1,18 +1,4 @@
 spring:
-  datasource:
-    url: jdbc:postgresql://localhost:5432/crm
-    username: crm
-    password: crm-local-dev
-    driver-class-name: org.postgresql.Driver
-
-  jpa:
-    open-in-view: false
-    hibernate:
-      ddl-auto: validate
-
-  flyway:
-    enabled: true
-
   kafka:
     bootstrap-servers: localhost:8080
     producer:
@@ -20,8 +6,17 @@ spring:
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
       properties:
         "[spring.json.add.type.headers]": false
-
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    flyaway:
+      enabled: true
 app:
   kafka:
     topics:
       interaction-recorded: customer.interaction.recorded
+  security:
+    jwt-secret: ${JWT_SECRET}
+    demo-user: ${DEMO_USER:crm}
+    demo-password: ${DEMO_PASSWORD:crm}

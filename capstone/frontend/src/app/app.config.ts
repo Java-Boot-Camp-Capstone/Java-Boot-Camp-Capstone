@@ -1,18 +1,19 @@
-import { ApplicationConfig } from '@angular/core';
-import { provideRouter } from '@angular/router';
-import {
-  provideHttpClient,
-  withInterceptors
-} from '@angular/common/http';
 
-import { routes } from './app.routes';
-import { authInterceptor } from './auth/auth.interceptor';
+import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable } from 'rxjs';
 
-export const appConfig: ApplicationConfig = {
-  providers: [
-    provideRouter(routes),
-    provideHttpClient(
-      withInterceptors([authInterceptor])
-    )
-  ]
-};
+import { Customer } from './customer.model';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class CustomerService {
+  private readonly http = inject(HttpClient);
+
+  private readonly apiUrl = 'http://localhost:8080/api/customers';
+
+  getCustomers(): Observable<Customer[]> {
+    return this.http.get<Customer[]>(this.apiUrl);
+  }
+}
