@@ -1,0 +1,28 @@
+# syntax=docker/dockerfile:1
+# Northstar CRM - Angular agent UI image
+# Multi-stage: build with Node 22, serve static files with unprivileged nginx.
+
+# ---------- Build stage ----------
+FROM node:22-alpine AS build
+WORKDIR /workspace
+
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
+
+COPY . .
+RUN npx ng build --configuration production \
+ && mkdir -p /out \
+ && if [ -d dist/*/browser ]; then cp -r dist/*/browser/. /out/; else cp -r dist/*/. /out/; fi
+
+# ---------- Runtime stage ----------
+FROM nginxinc/nginx-unprivileged:1.27-alpine
+LABEL org.opencontainers.image.title="northstar-crm-frontend" \
+      org.opencontainers.image.description="Northstar CRM Angular agent UI" \
+      org.opencontainers.image.source="https://github.com/Java-Boot-Camp-Capstone/Java-Boot-Camp-Capstone"
+
+# Rendered with envsubst at container start (nginx official entrypoint)
+ENV BACKEND_URL=http://backend:8080
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+COPY --from=build /out /usr/share/nginx/html
+
+EXPOSE 8080

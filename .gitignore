@@ -1,0 +1,21 @@
+# Secrets / local config - never commit
+.env
+*.env
+!.env.example
+*.pem
+*.key
+kubeconfig*
+*.tfstate
+*.tfstate.*
+
+# Build output
+target/
+node_modules/
+dist/
+.angular/
+coverage/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log
