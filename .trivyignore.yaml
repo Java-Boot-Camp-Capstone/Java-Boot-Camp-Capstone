@@ -12,7 +12,7 @@ vulnerabilities:
   - id: CVE-2026-106451
     statement: lz4-java 1.10.1 HIGH (comes in through kafka-clients). Owner backend team.
     expired_at: 2026-11-30
-  # Angular 19.2 - fixes only exist in Angular 20.3+ (major upgrade = frontend team decision)
+  # Angular 19.2 - fixes only exist in Angular 20.3+ (major upgrade = Left up to frontend team decision)
   - id: CVE-2026-54266
     statement: "@angular/common HIGH. Owner frontend team. Fix: upgrade to Angular 20.3+."
     expired_at: 2026-11-30

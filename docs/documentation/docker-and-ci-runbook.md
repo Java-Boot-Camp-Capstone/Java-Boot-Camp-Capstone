@@ -1,6 +1,6 @@
 # Docker & GitHub Actions - how it works
 
-Owner: Brandon (Docker / CI-CD). To just **run** the app, see the [README](../../README.md).
+Last Reviewed by: Brandon (Docker / CI-CD). To just **run** the app, see the [README_EasyRun](../../README.md).
 
 Delivery path (from [architecture.md](architecture.md)):
 **GitHub → GitHub Actions → tests and security checks → Docker image → k3s deployment**

@@ -1,6 +1,6 @@
 # Demo Script — Northstar CRM Final Defense
 
-**Target demo time:** 10 minutes  
+**Target demo time:** 5-10 minutes  
 **Goal:** Demonstrate a customer interaction from the Angular UI through the backend to PostgreSQL, explain the event flow, and show an authentication failure case.
 
 **Fixtures:** `CUS-1001` (Amina), `CUS-1002` (Ravi), `CUS-9999` (not found, if supported), `lab-request-001`
