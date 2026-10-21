@@ -1,0 +1,15 @@
+/* Configuration file:
+This file is used to configure the TypeScript compiler for the Angular application. It extends the base tsconfig.json file and specifies additional compiler options, output directory, and files to include in the compilation process. */
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./out-tsc/app",
+    "types": []
+  },
+  "files": [
+    "src/main.ts"
+  ],
+  "include": [
+    "src/**/*.d.ts"
+  ]
+}

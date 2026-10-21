@@ -1,0 +1,72 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: crm-backend
+  labels: { app: crm-backend }
+spec:
+  selector: { app: crm-backend }
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crm-backend
+  labels: { app: crm-backend }
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5          # keeps previous digests available for `kubectl rollout undo`
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }   # new pod must be Ready before old one stops
+  selector:
+    matchLabels: { app: crm-backend }
+  template:
+    metadata:
+      labels: { app: crm-backend }
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: backend
+          image: northstar-crm-backend      # rewritten to ghcr.io/...@sha256:<digest> by the deploy job
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef: { name: crm-config }
+          env:
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom: { secretKeyRef: { name: crm-secrets, key: POSTGRES_PASSWORD } }
+            - name: APP_JWT_SECRET
+              valueFrom: { secretKeyRef: { name: crm-secrets, key: APP_JWT_SECRET } }
+            - name: APP_DEMO_AGENT_PASSWORD
+              valueFrom: { secretKeyRef: { name: crm-secrets, key: APP_DEMO_AGENT_PASSWORD } }
+            - name: APP_DEMO_MANAGER_PASSWORD
+              valueFrom: { secretKeyRef: { name: crm-secrets, key: APP_DEMO_MANAGER_PASSWORD } }
+          startupProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8080 }
+            periodSeconds: 5
+            failureThreshold: 36       # up to 3 minutes for first start (Flyway + JVM)
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: 8080 }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8080 }
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 100m, memory: 384Mi }
+            limits: { cpu: "1", memory: 768Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp          # Tomcat/JVM scratch space with a read-only root filesystem
+      volumes:
+        - name: tmp
+          emptyDir: {}

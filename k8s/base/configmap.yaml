@@ -1,0 +1,12 @@
+# Non-sensitive configuration only. Passwords / JWT key live in the crm-secrets Secret.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: crm-config
+data:
+  POSTGRES_DB: crm
+  POSTGRES_USER: crm
+  SPRING_DATASOURCE_URL: jdbc:postgresql://crm-postgres:5432/crm
+  SPRING_DATASOURCE_USERNAME: crm
+  SPRING_KAFKA_BOOTSTRAP_SERVERS: crm-kafka:9092
+  BACKEND_URL: http://crm-backend:8080

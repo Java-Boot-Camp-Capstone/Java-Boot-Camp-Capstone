@@ -1,0 +1,51 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 20px;
+  padding: 18px 28px;
+  background: #17365d;
+  color: white;
+}
+
+.brand {
+  color: white;
+  font-size: 21px;
+  font-weight: bold;
+  text-decoration: none;
+}
+
+nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+nav a {
+  color: white;
+  text-decoration: none;
+  padding: 5px 0;
+}
+
+nav a.active {
+  border-bottom: 2px solid white;
+}
+
+.app-content {
+  flex: 1;
+}
+
+.app-footer {
+  padding: 18px;
+  text-align: center;
+  color: #667085;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+}

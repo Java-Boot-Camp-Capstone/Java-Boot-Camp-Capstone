@@ -1,0 +1,36 @@
+# Accepted security-scan findings (Trivy). Each entry has an owner, a reason and an expiry date.
+# After `expired_at` the finding blocks CI again until it is fixed or re-approved.
+vulnerabilities:
+  - id: CVE-2026-47884
+    statement: >-
+      spring-webmvc 6.2.x CRITICAL - fix only exists in Spring Framework 7 (Spring Boot 4 major upgrade).
+      Owner: backend team. Mitigation: every API call requires a valid JWT; synthetic data only.
+    expired_at: 2026-11-30
+  - id: CVE-2026-47890
+    statement: spring-webmvc 6.2.x CRITICAL - same as CVE-2026-47884. Owner backend team.
+    expired_at: 2026-11-30
+  - id: CVE-2026-106451
+    statement: lz4-java 1.10.1 HIGH (comes in through kafka-clients). Owner backend team.
+    expired_at: 2026-11-30
+  # Angular 19.2 - fixes only exist in Angular 20.3+ (major upgrade = Left up to frontend team decision)
+  - id: CVE-2026-54266
+    statement: "@angular/common HIGH. Owner frontend team. Fix: upgrade to Angular 20.3+."
+    expired_at: 2026-11-30
+  - id: CVE-2026-54268
+    statement: "@angular/common HIGH. Owner frontend team. Fix: upgrade to Angular 20.3+."
+    expired_at: 2026-11-30
+  - id: CVE-2026-68945
+    statement: "@angular/common HIGH. Owner frontend team. Fix: upgrade to Angular 20.3+."
+    expired_at: 2026-11-30
+  - id: CVE-2026-69151
+    statement: "@angular/compiler/core HIGH. Owner frontend team. Fix: upgrade to Angular 20.3+."
+    expired_at: 2026-11-30
+  - id: CVE-2026-54267
+    statement: "@angular/core HIGH (hydration - not used). Owner frontend team."
+    expired_at: 2026-11-30
+  - id: CVE-2026-101896
+    statement: "@angular/router HIGH. Owner frontend team. Fix: upgrade to Angular 20.3+."
+    expired_at: 2026-11-30
+  - id: CVE-2026-111752
+    statement: "@angular/router HIGH. Owner frontend team. Fix: upgrade to Angular 20.3+."
+    expired_at: 2026-11-30

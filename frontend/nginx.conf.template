@@ -1,0 +1,51 @@
+# Keep the scheme/host set by an upstream proxy (k3s Traefik ingress, Cloudflare demo tunnel); else use ours.
+map $http_x_forwarded_proto $forwarded_proto {
+    default $http_x_forwarded_proto;
+    ""      $scheme;
+}
+map $http_x_forwarded_host $forwarded_host {
+    default $http_x_forwarded_host;
+    ""      $http_host;          # includes :port (e.g. localhost:4200) - Spring needs it for the origin check
+}
+
+server {
+    listen 8080;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Security headers
+    server_tokens off;   # don't leak the nginx version in the Server header
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
+    # CSP: only our own origin. The sha256 hash allows Angular's critical-CSS loader (onload="this.media='all'").
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-hashes' 'sha256-MhtPZXr7+LpJUY5qtMutB+qWfQtMaPccfe7QXtCcEYc='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+
+    # Proxy API calls to the Spring Boot container (override with BACKEND_URL).
+    # Lets the UI call /api/... on the same origin (no CORS) when deployed.
+    location /api/ {
+        proxy_pass ${BACKEND_URL};
+        # Pass the ORIGINAL host:port + scheme so Spring (forward-headers-strategy=framework) sees the
+        # browser's real origin. Without this, same-origin POSTs look cross-origin and CORS returns 403.
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
+        proxy_set_header X-Forwarded-Host $forwarded_host;
+        proxy_set_header X-Correlation-Id $http_x_correlation_id;
+    }
+
+    # Simple liveness endpoint for container / k3s probes
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    # Angular client-side routing: fall back to index.html
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

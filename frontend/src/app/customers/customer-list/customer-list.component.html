@@ -1,0 +1,29 @@
+
+<h2>Customers</h2>
+
+<p *ngIf="loading">Loading customers...</p>
+
+<p *ngIf="error" class="error">
+  {{ error }}
+</p>
+
+<p *ngIf="!loading && !error && customers.length === 0">
+  No customers found.
+</p>
+
+<table *ngIf="!loading && !error && customers.length > 0">
+  <thead>
+  <tr>
+    <th>Customer ID</th>
+    <th>Name</th>
+    <th>Status</th>
+  </tr>
+  </thead>
+  <tbody>
+  <tr *ngFor="let customer of customers">
+    <td>{{ customer.publicId }}</td>
+    <td>{{ customer.fullName }}</td>
+    <td>{{ customer.status }}</td>
+  </tr>
+  </tbody>
+</table>
