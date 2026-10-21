@@ -1,4 +1,4 @@
 @echo off
-rem Double-click me, or run from a terminal. Extra options are passed through (see install.ps1).
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1" %*
-if "%~1"=="" pause
+rem Runs install.ps1 (options are passed through, e.g. install.cmd -DevTools). Never waits for a key press.
+powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%~dp0install.ps1" %*
+exit /b %ERRORLEVEL%

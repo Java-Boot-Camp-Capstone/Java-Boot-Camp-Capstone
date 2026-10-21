@@ -1,4 +1,4 @@
 @echo off
-rem Double-click me, or run from a terminal. Extra options are passed through (see start.ps1).
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0start.ps1" %*
-if "%~1"=="" pause
+rem Runs start.ps1 (options are passed through, e.g. start.cmd -NoBrowser)
+powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%~dp0start.ps1" %*
+exit /b %ERRORLEVEL%

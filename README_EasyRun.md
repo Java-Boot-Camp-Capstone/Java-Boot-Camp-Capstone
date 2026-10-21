@@ -9,17 +9,22 @@ Everything runs in **Docker** - you do **not** need Java, Maven, Node or Angular
 ## Run the app (3 steps)
 
 ### Windows
-| Step | Do this | What happens |
+Open a terminal in the project folder (VS Code: **Terminal → New Terminal**, or PowerShell) and run:
+
+| Step | Command | What happens |
 |---|---|---|
-| 1. Install (once) | Double-click **`scripts\windows\install.cmd`** | Installs Git + Docker Desktop if missing, starts Docker, builds the app (first time ~5 min) |
-| 2. Start | Double-click **`scripts\windows\start.cmd`** | Starts everything, runs a quick check, opens **http://localhost:4200** |
-| 3. Stop | Double-click **`scripts\windows\stop.cmd`** | Stops everything (your data is kept) |
+| 1. Install (once) | `.\scripts\windows\install.cmd` | Installs Git + Docker Desktop if missing, starts Docker, builds the app (first time ~5 min) |
+| 2. Start | `.\scripts\windows\start.cmd` | Starts everything, runs a quick check, opens **http://localhost:4200**, then returns to the prompt |
+| 3. Stop | `.\scripts\windows\stop.cmd` | Stops everything (data kept). `.\scripts\windows\stop.cmd -Reset` also wipes the database |
+
+The scripts finish on their own - the app keeps running in Docker in the background until you run **stop**.
+(VS Code *Code Runner* users: if it ever says "Code is already running", press **Ctrl+Alt+M** to stop it.)
 
 ### macOS / Linux
 ```bash
-./scripts/mac-linux/install.sh     # once
-./scripts/mac-linux/start.sh       # start  -> http://localhost:4200
-./scripts/mac-linux/stop.sh        # stop
+cp .env.example .env                  # once
+docker compose up -d --build --wait   # start  -> http://localhost:4200
+docker compose down                   # stop   (add -v to wipe the database)
 ```
 
 ### Log in
@@ -50,7 +55,7 @@ These are local demo passwords from `.env` (created automatically from `.env.exa
 | "Docker is not running" | Open **Docker Desktop**, wait for *Engine running*, run start again |
 | Port 4200/8080/5432 already in use | Stop the other program (or another copy of this app), run start again |
 | Start says a container is unhealthy | `docker compose logs backend` shows why |
-| Want a clean database | `scripts\windows\stop.cmd -Reset` (or `./scripts/mac-linux/stop.sh --reset`), then start |
+| Want a clean database | `.\scripts\windows\stop.cmd -Reset` (or `docker compose down -v`), then start |
 | Pulled new code | Just run start again - it rebuilds what changed |
 
 ---
