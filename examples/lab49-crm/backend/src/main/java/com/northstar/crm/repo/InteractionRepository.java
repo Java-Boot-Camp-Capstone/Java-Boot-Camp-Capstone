@@ -1,5 +1,6 @@
 package com.northstar.crm.repo;
 
+import com.northstar.crm.domain.CustomerStatus;
 import com.northstar.crm.domain.Interaction;
 import java.util.Map;
 import java.util.Optional;
@@ -28,5 +29,15 @@ public class InteractionRepository {
     /** Known demo customers for session validation. Full path: CustomerRepository. */
     public boolean customerExists(String customerId) {
         return "CUS-1001".equals(customerId) || "CUS-1002".equals(customerId);
+    }
+
+    public Optional<CustomerStatus> findCustomerStatus(String customerId) {
+        if ("CUS-1001".equals(customerId)) {
+            return Optional.of(CustomerStatus.ACTIVE);
+        }
+        if ("CUS-1002".equals(customerId)) {
+            return Optional.of(CustomerStatus.PROSPECT);
+        }
+        return Optional.empty();
     }
 }

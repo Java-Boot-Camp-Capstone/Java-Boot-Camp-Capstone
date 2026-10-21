@@ -16,3 +16,7 @@ app:
   kafka:
     topics:
       interaction-recorded: customer.interaction.recorded
+  security:
+    jwt-secret: ${JWT_SECRET}
+    demo-user: ${DEMO_USER:crm}
+    demo-password: ${DEMO_PASSWORD:crm}
