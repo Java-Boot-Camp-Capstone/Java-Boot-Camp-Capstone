@@ -1,0 +1,7 @@
+# Keep Linux line endings for files that run inside containers / CI runners
+# (Windows checkouts with core.autocrlf=true would otherwise turn them into CRLF and break bash/nginx).
+*.sh        text eol=lf
+Dockerfile  text eol=lf
+*.template  text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf

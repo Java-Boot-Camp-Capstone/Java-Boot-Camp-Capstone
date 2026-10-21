@@ -1,0 +1,18 @@
+# k3s ships the Traefik ingress controller. The UI and /api/* both go through the frontend
+# nginx (which proxies /api to crm-backend), so one Ingress rule covers the whole app.
+# Set a host per environment in the overlay if the cluster has DNS; without a host it matches any.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: crm-ingress
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: crm-frontend
+                port:
+                  number: 80

@@ -19,3 +19,7 @@ coverage/
 .DS_Store
 Thumbs.db
 *.log
+
+# k3s deploy overlays generated at deploy time
+k8s/.deploy-*
+.vscode/

@@ -1,0 +1,63 @@
+spring:
+  datasource:
+    # Connection values come from the environment (Docker Compose, k3s Secret, IntelliJ run config).
+    # SECURITY: no password is committed here - see .env.example / docs/documentation/security-baseline.md.
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/crm}
+    username: ${SPRING_DATASOURCE_USERNAME:crm}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+
+  flyway:
+    enabled: true
+
+  kafka:
+    # FIX: was "localhost:8080". Port 8080 is this Spring Boot API's own HTTP port, not Kafka,
+    # so the producer could never reach a broker. Kafka's client port is 9092 (local default).
+    # In Docker Compose / k3s the SPRING_KAFKA_BOOTSTRAP_SERVERS env var overrides this
+    # (e.g. kafka:29092 inside the compose network).
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        "[spring.json.add.type.headers]": false
+
+# Actuator: expose ONLY health (liveness/readiness probes for Docker + k3s). No env/beans/heapdump.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+
+server:
+  # Trust X-Forwarded-Host/Proto from the nginx reverse proxy so same-origin checks (CORS) use the
+  # browser's real origin. Only nginx/ingress can reach the API inside k3s (ClusterIP service).
+  forward-headers-strategy: framework
+  error:
+    include-stacktrace: never
+    include-message: never
+
+app:
+  kafka:
+    topics:
+      interaction-recorded: customer.interaction.recorded
+  security:
+    jwt:
+      # HS256 signing key, >= 32 characters. REQUIRED - the app refuses to start without it.
+      secret: ${APP_JWT_SECRET}
+      issuer: northstar-crm
+      ttl-minutes: 30
+    # Synthetic demo accounts (training only). Passwords injected from env / GitHub / k3s secrets.
+    demo-users:
+      agent-password: ${APP_DEMO_AGENT_PASSWORD}
+      manager-password: ${APP_DEMO_MANAGER_PASSWORD}

@@ -1,0 +1,41 @@
+# Trivy time-boxed risk exceptions (Module 40/51: "a finding needs a fix or an owned, dated exception").
+# Each entry has an owner, a reason, and an expiry. After `expired_at` the finding BLOCKS the build again.
+# Reviewed in weekly security triage - see docs/documentation/security-baseline.md (Residual risks).
+vulnerabilities:
+  # --- Backend (Spring Boot 3.5.x) --------------------------------------------------------------
+  - id: CVE-2026-47884
+    statement: >-
+      spring-webmvc 6.2.x CRITICAL - fix only in Spring Framework 7.0.9 (Spring Boot 4 major upgrade).
+      Owner: backend team. Mitigation: JWT deny-by-default API, training cluster only, synthetic data.
+      Action: plan Boot 4 migration, or adopt a 6.2.x patch if released.
+    expired_at: 2026-11-30
+  - id: CVE-2026-47890
+    statement: spring-webmvc 6.2.x CRITICAL - same as CVE-2026-47884. Owner backend team.
+    expired_at: 2026-11-30
+  - id: CVE-2026-106451
+    statement: >-
+      lz4-java 1.10.1 HIGH (transitive via kafka-clients). Owner: backend team. Action: override
+      lz4-java to 1.11.4 once kafka-clients compatibility is verified.
+    expired_at: 2026-11-30
+  # --- Frontend (Angular 19.2 - fixes only published for Angular 20.3+) ---------------------------
+  - id: CVE-2026-54266
+    statement: "@angular/common HIGH. Owner: frontend team. Action: upgrade Angular 19 -> 20.3.33+."
+    expired_at: 2026-11-30
+  - id: CVE-2026-54268
+    statement: "@angular/common HIGH (DoS via date format). Owner: frontend team. Action: Angular 20.3.33+."
+    expired_at: 2026-11-30
+  - id: CVE-2026-68945
+    statement: "@angular/common HIGH. Owner: frontend team. Action: Angular 20.3.33+."
+    expired_at: 2026-11-30
+  - id: CVE-2026-69151
+    statement: "@angular/compiler/core HIGH. Owner: frontend team. Action: Angular 20.3.33+."
+    expired_at: 2026-11-30
+  - id: CVE-2026-54267
+    statement: "@angular/core HIGH (hydration; app does not use SSR hydration). Owner: frontend team."
+    expired_at: 2026-11-30
+  - id: CVE-2026-101896
+    statement: "@angular/router HIGH. Owner: frontend team. Action: Angular 20.3.33+."
+    expired_at: 2026-11-30
+  - id: CVE-2026-111752
+    statement: "@angular/router HIGH (DoS). Owner: frontend team. Action: Angular 20.3.33+."
+    expired_at: 2026-11-30

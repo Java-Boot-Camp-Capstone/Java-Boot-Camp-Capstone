@@ -1,0 +1,26 @@
+# Northstar CRM - k3s base manifests (Kustomize, built into kubectl: `kubectl apply -k`)
+#
+# The CI deploy job generates an overlay that sets the namespace and pins BOTH app images
+# to the exact digests it built + scanned (never a floating tag). See docs/documentation/k3s-deployment.md.
+#
+# NOT committed on purpose: the `crm-secrets` Secret. The pipeline creates it from
+# GitHub Environment secrets (kubectl create secret ... --dry-run=client | kubectl apply).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: northstar-crm
+    includeSelectors: false
+
+resources:
+  - configmap.yaml
+  - postgres.yaml
+  - kafka.yaml
+  - backend.yaml
+  - frontend.yaml
+  - ingress.yaml
+
+# No `images:` transform here on purpose: the deploy overlay is the ONLY place the
+# placeholder names (northstar-crm-backend / northstar-crm-frontend) become
+# ghcr.io/...@sha256:<digest>. A rename here would stop the overlay's digest pin from matching.

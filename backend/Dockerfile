@@ -21,11 +21,17 @@ LABEL org.opencontainers.image.title="northstar-crm-backend" \
       org.opencontainers.image.description="Northstar CRM Spring Boot REST API" \
       org.opencontainers.image.source="https://github.com/Java-Boot-Camp-Capstone/Java-Boot-Camp-Capstone"
 
-RUN addgroup -S app && adduser -S app -G app
+# apk upgrade pulls patched OS packages released after the base image was built (Trivy findings).
+# Numeric UID/GID so Kubernetes `runAsNonRoot: true` can verify the user is not root.
+RUN apk upgrade --no-cache \
+ && addgroup -S -g 10001 app && adduser -S -u 10001 -G app app
 WORKDIR /app
 COPY --from=build --chown=app:app /workspace/app.jar app.jar
-USER app
+USER 10001:10001
 
 EXPOSE 8080
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
+# Readiness signal for plain `docker run` (k3s uses its own probes on the same endpoint)
+HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=5 \
+  CMD wget -qO- http://localhost:8080/actuator/health/readiness | grep -q UP || exit 1
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]

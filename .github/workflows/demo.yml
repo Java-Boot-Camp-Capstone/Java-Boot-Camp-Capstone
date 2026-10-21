@@ -1,0 +1,121 @@
+# Northstar CRM - one-click demo from the Actions tab (presentation-day backup).
+#
+# Actions -> "Demo - run full CRM stack" -> Run workflow -> pick the branch.
+#   * Builds and starts the whole stack (Angular + Spring Boot + PostgreSQL + Kafka) on a GitHub runner
+#   * Runs the smoke test (happy path + 401/400 negatives) and posts results to the run summary
+#   * Optional: opens a temporary public HTTPS URL (Cloudflare quick tunnel) so anyone can use the UI
+#     from a browser for N minutes - no laptop setup needed.
+#
+# Public URL mode requires repo secrets DEMO_AGENT_PASSWORD and DEMO_MANAGER_PASSWORD (the presenter
+# knows them; they are never printed). Synthetic data only. The tunnel closes when the job ends.
+
+name: Demo - run full CRM stack
+
+on:
+  workflow_dispatch:
+    inputs:
+      public_url:
+        description: "Open a temporary public URL to the UI (needs DEMO_* secrets)"
+        type: boolean
+        default: false
+      minutes:
+        description: "How long to keep the demo running when public_url is on"
+        type: choice
+        options: ["15", "30", "45", "60", "90"]
+        default: "45"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: demo-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CLOUDFLARED_IMAGE: cloudflare/cloudflared:2026.10.2
+
+jobs:
+  demo:
+    name: Demo stack (${{ github.ref_name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Prepare demo secrets
+        env:
+          PUBLIC_URL: ${{ inputs.public_url }}
+          DEMO_AGENT_PASSWORD: ${{ secrets.DEMO_AGENT_PASSWORD }}
+          DEMO_MANAGER_PASSWORD: ${{ secrets.DEMO_MANAGER_PASSWORD }}
+        run: |
+          gen() { openssl rand -hex 24; }
+          if [ "$PUBLIC_URL" = "true" ]; then
+            if [ -z "$DEMO_AGENT_PASSWORD" ] || [ -z "$DEMO_MANAGER_PASSWORD" ]; then
+              echo "::error::Public URL mode needs repo secrets DEMO_AGENT_PASSWORD and DEMO_MANAGER_PASSWORD (Settings -> Secrets and variables -> Actions)."
+              exit 1
+            fi
+            agent="$DEMO_AGENT_PASSWORD"; manager="$DEMO_MANAGER_PASSWORD"
+          else
+            agent="$(gen)"; manager="$(gen)"     # nobody can reach the runner, so random is fine
+          fi
+          {
+            echo "POSTGRES_PASSWORD=$(gen)"
+            echo "APP_JWT_SECRET=$(gen)$(gen)"
+            echo "APP_DEMO_AGENT_PASSWORD=$agent"
+            echo "APP_DEMO_MANAGER_PASSWORD=$manager"
+          } > "$RUNNER_TEMP/demo.env"
+          while IFS='=' read -r _ v; do echo "::add-mask::$v"; done < "$RUNNER_TEMP/demo.env"
+
+      - name: Build images
+        run: docker compose --env-file "$RUNNER_TEMP/demo.env" build
+
+      - name: Start stack
+        run: |
+          docker compose --env-file "$RUNNER_TEMP/demo.env" up -d --wait --wait-timeout 300
+          docker compose --env-file "$RUNNER_TEMP/demo.env" ps
+
+      - name: Smoke test
+        run: |
+          set -a; . "$RUNNER_TEMP/demo.env"; set +a
+          AGENT_PASSWORD="$APP_DEMO_AGENT_PASSWORD" SMOKE_LABEL="demo stack (${GITHUB_REF_NAME})" bash scripts/smoke-test.sh
+
+      - name: Open public URL and keep demo alive
+        if: inputs.public_url
+        env:
+          MINUTES: ${{ inputs.minutes }}
+        run: |
+          docker run -d --name tunnel --network host "$CLOUDFLARED_IMAGE" \
+            tunnel --no-autoupdate --url http://localhost:4200
+          url=""
+          for _ in $(seq 1 30); do
+            url=$(docker logs tunnel 2>&1 | grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' | head -1)
+            [ -n "$url" ] && break; sleep 2
+          done
+          if [ -z "$url" ]; then docker logs tunnel; echo "::error::tunnel did not start"; exit 1; fi
+          echo "::notice title=Demo URL (open in a browser)::$url  - log in as 'agent' with the DEMO_AGENT_PASSWORD secret. Live for ${MINUTES} min."
+          {
+            echo "## Live demo"
+            echo "**URL:** $url"
+            echo ""
+            echo "- Login: \`agent\` (or \`manager\`) with the password stored in the DEMO_* repo secret"
+            echo "- Stays up for **${MINUTES} minutes** (or until you cancel this run)"
+            echo "- Demo journey: search CUS-1001 (Amina Khan) -> open profile -> record an interaction"
+          } >> "$GITHUB_STEP_SUMMARY"
+          end=$(( $(date +%s) + MINUTES * 60 ))
+          while [ "$(date +%s)" -lt "$end" ]; do
+            left=$(( (end - $(date +%s)) / 60 ))
+            ui=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:4200/healthz)
+            api=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/actuator/health/readiness)
+            echo "$(date -u +%H:%M:%S)  ui=$ui api=$api  ~${left} min left  $url"
+            sleep 60
+          done
+
+      - name: Container logs (always, for evidence)
+        if: always()
+        run: docker compose --env-file "$RUNNER_TEMP/demo.env" logs --tail=100 backend frontend || true
+
+      - name: Tear down
+        if: always()
+        run: |
+          docker rm -f tunnel 2>/dev/null || true
+          docker compose --env-file "$RUNNER_TEMP/demo.env" down -v || true

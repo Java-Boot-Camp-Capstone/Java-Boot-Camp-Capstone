@@ -1,0 +1,27 @@
+<header class="app-header">
+  <a class="brand" routerLink="/customers">
+    Northstar CRM
+  </a>
+
+  <nav aria-label="Main navigation">
+    <a routerLink="/customers" routerLinkActive="active">
+      Customers
+    </a>
+
+    <a routerLink="/interactions" routerLinkActive="active">
+      Interactions
+    </a>
+
+    <a routerLink="/login" routerLinkActive="active">
+      Login
+    </a>
+  </nav>
+</header>
+
+<main class="app-content">
+  <router-outlet></router-outlet>
+</main>
+
+<footer class="app-footer">
+  Northstar CRM &copy; 2026
+</footer>

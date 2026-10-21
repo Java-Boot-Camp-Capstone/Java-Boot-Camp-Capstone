@@ -15,7 +15,7 @@ RUN npx ng build --configuration production \
  && if [ -d dist/*/browser ]; then cp -r dist/*/browser/. /out/; else cp -r dist/*/. /out/; fi
 
 # ---------- Runtime stage ----------
-FROM nginxinc/nginx-unprivileged:1.27-alpine
+FROM nginxinc/nginx-unprivileged:1.30-alpine
 LABEL org.opencontainers.image.title="northstar-crm-frontend" \
       org.opencontainers.image.description="Northstar CRM Angular agent UI" \
       org.opencontainers.image.source="https://github.com/Java-Boot-Camp-Capstone/Java-Boot-Camp-Capstone"
