@@ -20,6 +20,13 @@ public class InteractionEventPublisher {
             kafkaTemplate;
     private final String topic;
 
+    private static String sanitizeForLog(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value.replace('\r', '_').replace('\n', '_');
+    }
+
     public InteractionEventPublisher() {
         this(null, DEFAULT_TOPIC);
     }
@@ -47,7 +54,7 @@ public class InteractionEventPublisher {
                     "Kafka not configured, skipping publish of {} customerId={} correlationId={}",
                     CustomerInteractionRecordedV1.TYPE,
                     event.customerId(),
-                    event.correlationId());
+                    sanitizeForLog(event.correlationId()));
             return;
         }
 
@@ -58,14 +65,14 @@ public class InteractionEventPublisher {
                                 "Failed to publish {} customerId={} correlationId={} error={}",
                                 CustomerInteractionRecordedV1.TYPE,
                                 event.customerId(),
-                                event.correlationId(),
+                                sanitizeForLog(event.correlationId()),
                                 error);
                     } else {
                         log.info(
                                 "Published {} customer={} correlation={} topic={}",
                                 CustomerInteractionRecordedV1.TYPE,
                                 event.customerId(),
-                                event.correlationId(),
+                                sanitizeForLog(event.correlationId()),
                                 topic);
                     }
                 });
