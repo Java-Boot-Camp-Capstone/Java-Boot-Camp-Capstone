@@ -9,7 +9,7 @@ Everything runs in **Docker** - you do **not** need Java, Maven, Node or Angular
 ## Run the app (3 steps)
 
 ### Windows
-Open a terminal in the project folder (VS Code: **Terminal → New Terminal**, or PowerShell) and run:
+Open a terminal in the project folder (IntelliJ/VS Code: **Terminal → New Terminal**, or PowerShell) and run:
 
 | Step | Command | What happens |
 |---|---|---|
